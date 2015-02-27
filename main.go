@@ -72,6 +72,9 @@ func setenv(key, value string) (err error) {
 func get_headers() (headers http.Header) {
 	headers = make(http.Header)
 	for key, value := range current_environ {
+		if !strings.HasPrefix(key, header_prefix) {
+			continue
+		}
 		name := envkey_to_headerkey(key)
 		headers.Set(name, value)
 	}
@@ -287,6 +290,7 @@ Commands:
 
 	// Copy current environment:
 	initial_environ = environ_to_map(os.Environ())
+	current_environ = environ_to_map(os.Environ())
 
 	body_required := true
 	switch strings.ToLower(cmd) {
