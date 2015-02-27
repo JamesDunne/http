@@ -58,7 +58,6 @@ First, let's set up a base URL to use for all subsequent requests. This is a req
 
 ```
 $ . http url https://api.travis-ci.com/
-export HTTPCLI_URL=$'https://api.travis-ci.com/'
 ```
 
 Let's confirm that base URL is set in our shell environment via the `http` tool itself:
@@ -180,6 +179,8 @@ Now how about clearing all HTTP headers?
 ```
 $ . http clear
 ```
+
+Note that `clear` only clears HTTP headers, not the base URL.
 
 # How it works
 
