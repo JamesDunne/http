@@ -53,7 +53,7 @@ func environ_to_map(environ []string) (m map[string]string) {
 }
 
 func setenv(key, value string) (err error) {
-	err = setenv(key, value)
+	err = os.Setenv(key, value)
 	if err != nil {
 		return err
 	}
@@ -85,6 +85,9 @@ func get_headers() (headers http.Header) {
 func set_headers(headers http.Header) {
 	// Unset removed headers first:
 	for key, _ := range current_environ {
+		if !strings.HasPrefix(key, header_prefix) {
+			continue
+		}
 		name := envkey_to_headerkey(key)
 		if _, ok := headers[name]; !ok {
 			setenv(key, "")
@@ -94,7 +97,8 @@ func set_headers(headers http.Header) {
 	// Set new headers:
 	for key, values := range headers {
 		name := headerkey_to_envkey(key)
-		err := setenv(name, strings.Join(values, " "))
+		value := strings.Join(values, " ")
+		err := setenv(name, value)
 		if err != nil {
 			Error("Error setting $%s: %s\n", name, err)
 			os.Exit(2)
@@ -144,6 +148,10 @@ func output_bash_env() {
 
 	// Set new or existing headers:
 	for key, value := range current_environ {
+		if initial_environ[key] == value {
+			continue
+		}
+
 		// Bash-escape the value as a single-quoted string with escaping rules:
 		bash_escape_value := strings.Replace(value, "\\", "\\\\", -1)
 		bash_escape_value = strings.Replace(bash_escape_value, "'", "\\'", -1)
