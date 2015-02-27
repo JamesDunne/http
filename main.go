@@ -18,12 +18,27 @@ func Error(format string, a ...interface{}) {
 
 var initial_environ, current_environ map[string]string
 
+const env_prefix = "HTTPCLI_"
+const header_prefix = env_prefix + "HEADER_"
+
+func headerkey_to_envkey(k string) string {
+	return header_prefix + strings.Replace(k, "-", "_", -1)
+}
+
+func envkey_to_headerkey(k string) string {
+	if !strings.HasPrefix(k, header_prefix) {
+		return ""
+	}
+
+	return strings.Replace(k[len(header_prefix):], "_", "-", -1)
+}
+
 // Convert a []string environment from os.Environ() to a more usable map.
 func environ_to_map(environ []string) (m map[string]string) {
 	m = make(map[string]string)
 	for _, kv := range environ {
 		// Ignore things we don't care about:
-		if !strings.HasPrefix(kv, "HTTPCLI_") {
+		if !strings.HasPrefix(kv, env_prefix) {
 			continue
 		}
 		// Split by first '=':
@@ -57,7 +72,7 @@ func setenv(key, value string) (err error) {
 func get_headers() (headers http.Header) {
 	headers = make(http.Header)
 	for key, value := range current_environ {
-		name := key[len("HTTPCLI_"):]
+		name := envkey_to_headerkey(key)
 		headers.Set(name, value)
 	}
 	return
@@ -67,15 +82,18 @@ func get_headers() (headers http.Header) {
 func set_headers(headers http.Header) {
 	// Unset removed headers first:
 	for key, _ := range current_environ {
-		if _, ok := headers[key]; !ok {
+		name := envkey_to_headerkey(key)
+		if _, ok := headers[name]; !ok {
 			setenv(key, "")
 		}
 	}
 
+	// Set new headers:
 	for key, values := range headers {
-		err := setenv("HTTPCLI_"+key, strings.Join(values, " "))
+		name := headerkey_to_envkey(key)
+		err := setenv(name, strings.Join(values, " "))
 		if err != nil {
-			Error("Error setting $HTTPCLI_%s: %s\n", key, err)
+			Error("Error setting $%s: %s\n", name, err)
 			os.Exit(2)
 			return
 		}
@@ -83,20 +101,20 @@ func set_headers(headers http.Header) {
 }
 
 func get_abs_url() *url.URL {
-	url_s := current_environ["HTTPCLI_URL"]
+	url_s := current_environ[env_prefix+"URL"]
 	if url_s == "" {
-		Error("Missing $HTTPCLI_URL env var\n")
+		Error("Missing $%sURL env var\n", env_prefix)
 		os.Exit(2)
 		return nil
 	}
 	base_url, err := url.Parse(url_s)
 	if err != nil {
-		Error("Error parsing $HTTPCLI_URL: %s\n", err)
+		Error("Error parsing $%sURL: %s\n", env_prefix, err)
 		os.Exit(2)
 		return nil
 	}
 	if !base_url.IsAbs() {
-		Error("$HTTPCLI_URL must be an absolute URL\n")
+		Error("$%sURL must be an absolute URL\n", env_prefix)
 		os.Exit(2)
 		return nil
 	}
@@ -104,9 +122,9 @@ func get_abs_url() *url.URL {
 }
 
 func set_abs_url(base_url *url.URL) {
-	err := setenv("HTTPCLI_URL", base_url.String())
+	err := setenv(env_prefix+"URL", base_url.String())
 	if err != nil {
-		Error("Error setting $HTTPCLI_URL: %s\n", err)
+		Error("Error setting $%sURL: %s\n", env_prefix, err)
 		os.Exit(2)
 		return
 	}
@@ -242,13 +260,13 @@ Commands:
   url    [absolute_url]
     Get or set base URL in environment.
 
-  header-clear
+  clear
     Clears all HTTP headers in environment.
 
-  header-set <header_name> <header_value>
+  set <header_name> <header_value>
     Sets a custom HTTP header in environment.
 
-  header-list
+  list
     List current HTTP headers in environment.
 
   GET    <relative-url>
