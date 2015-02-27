@@ -129,6 +129,11 @@ func get_abs_url() *url.URL {
 }
 
 func set_abs_url(base_url *url.URL) {
+	if !base_url.IsAbs() {
+		Error("$%sURL must be an absolute URL\n", env_prefix)
+		os.Exit(2)
+		return
+	}
 	err := setenv(env_prefix+"URL", base_url.String())
 	if err != nil {
 		Error("Error setting $%sURL: %s\n", env_prefix, err)
@@ -185,12 +190,18 @@ func do_http(http_method string, body_required bool, args []string) {
 		return
 	}
 
+	// Prevent base path from being empty:
+	base_path := base_url.Path
+	if base_path == "" {
+		base_path = "/"
+	}
+
 	// Combine absolute URL base with relative URL argument:
 	api_url := &url.URL{
 		Scheme:   base_url.Scheme,
 		Host:     base_url.Host,
 		User:     base_url.User,
-		Path:     path.Join(base_url.Path, rel_url.Path),
+		Path:     path.Join(base_path, rel_url.Path),
 		RawQuery: rel_url.RawQuery,
 		Fragment: rel_url.Fragment,
 	}
