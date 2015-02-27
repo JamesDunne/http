@@ -239,7 +239,10 @@ func do_http(http_method string, body_required bool, args []string) {
 	for key, values := range req.Header {
 		Error("%s: %s\n", key, strings.Join(values, " "))
 	}
-	Error("\n%s\n", body_data)
+	Error("\n")
+	if body_required {
+		Error("%s\n", body_data)
+	}
 
 	// Make the request:
 	resp, err := http.DefaultClient.Do(req)
@@ -257,7 +260,9 @@ func do_http(http_method string, body_required bool, args []string) {
 		if err != nil {
 			Error("Error copying: %s\n", err)
 		}
-		fmt.Println()
+		// For nicer shell output in the event that stderr -> stdout.
+		// We don't want to append any unnecessary \n to stdout.
+		fmt.Fprintln(os.Stderr)
 	}
 }
 
