@@ -12,15 +12,21 @@ import (
 	"strings"
 )
 
+func Error(format string, a ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, a...)
+}
+
 var initial_environ, current_environ map[string]string
 
 // Convert a []string environment from os.Environ() to a more usable map.
 func environ_to_map(environ []string) (m map[string]string) {
 	m = make(map[string]string)
 	for _, kv := range environ {
+		// Ignore things we don't care about:
 		if !strings.HasPrefix(kv, "HTTPCLI_") {
 			continue
 		}
+		// Split by first '=':
 		equ := strings.IndexByte(kv, '=')
 		if equ == -1 {
 			continue
@@ -31,33 +37,45 @@ func environ_to_map(environ []string) (m map[string]string) {
 	return
 }
 
-func Error(format string, a ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, a...)
+func setenv(key, value string) (err error) {
+	err = setenv(key, value)
+	if err != nil {
+		return err
+	}
+
+	// Replicate the setting in the current_environ map:
+	if value == "" {
+		delete(current_environ, key)
+		return nil
+	}
+
+	current_environ[key] = value
+	return nil
 }
 
+// Get HTTP headers from environment:
 func get_headers() (headers http.Header) {
-	// Get HTTP headers from environment:
 	headers = make(http.Header)
-	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "HTTPCLI_") {
-			continue
-		}
-		h := kv[len("HTTPCLI_"):]
-		equ := strings.IndexByte(h, '=')
-		if equ == -1 {
-			continue
-		}
-		name, value := h[:equ], h[equ+1:]
+	for key, value := range current_environ {
+		name := key[len("HTTPCLI_"):]
 		headers.Set(name, value)
 	}
 	return
 }
 
+// Set HTTP headers back to environment:
 func set_headers(headers http.Header) {
+	// Unset removed headers first:
+	for key, _ := range current_environ {
+		if _, ok := headers[key]; !ok {
+			setenv(key, "")
+		}
+	}
+
 	for key, values := range headers {
-		err := os.Setenv("HTTPCLI_"+key, strings.Join(values, " "))
+		err := setenv("HTTPCLI_"+key, strings.Join(values, " "))
 		if err != nil {
-			Error("Error setting $HTTPCLI_HEADERS: %s\n", err)
+			Error("Error setting $HTTPCLI_%s: %s\n", key, err)
 			os.Exit(2)
 			return
 		}
@@ -65,7 +83,7 @@ func set_headers(headers http.Header) {
 }
 
 func get_abs_url() *url.URL {
-	url_s := os.Getenv("HTTPCLI_URL")
+	url_s := current_environ["HTTPCLI_URL"]
 	if url_s == "" {
 		Error("Missing $HTTPCLI_URL env var\n")
 		os.Exit(2)
@@ -86,7 +104,7 @@ func get_abs_url() *url.URL {
 }
 
 func set_abs_url(base_url *url.URL) {
-	err := os.Setenv("HTTPCLI_URL", base_url.String())
+	err := setenv("HTTPCLI_URL", base_url.String())
 	if err != nil {
 		Error("Error setting $HTTPCLI_URL: %s\n", err)
 		os.Exit(2)
@@ -94,19 +112,25 @@ func set_abs_url(base_url *url.URL) {
 	}
 }
 
+// Output a bash script to modify the environment:
 func output_bash_env() {
 	// Unset removed headers first:
+	for key, _ := range initial_environ {
+		if _, ok := current_environ[key]; !ok {
+			fmt.Printf("unset %s\n", key)
+		}
+	}
 
-	curr_environ := os.Environ()
-
-	// Output the bash script to modify the environment:
-	for _, key := range curr_environ {
-		value := os.Getenv(key)
+	// Set new or existing headers:
+	for key, value := range current_environ {
 		// Bash-escape the value as a single-quoted string with escaping rules:
 		bash_escape_value := strings.Replace(value, "\\", "\\\\", -1)
 		bash_escape_value = strings.Replace(bash_escape_value, "'", "\\'", -1)
+
 		fmt.Printf("export %s=$'%s'\n", key, bash_escape_value)
 	}
+
+	// Comments cannot come first if using `eval`.
 	fmt.Println()
 	fmt.Println("# This output must be `eval`ed in bash in order to have effect on the current environment.")
 	fmt.Println("# Example: $ eval `http-cli ...`")
