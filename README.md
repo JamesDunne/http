@@ -81,13 +81,15 @@ The environment is now set up such that all subsequent requests are made to URLs
 Now let's set up some common headers that Travis requires:
 
 ```
-$ ./http set Accepts application/vnd.travis-ci.2+json
-$ ./http set User-Agent http/0.1
+$ eval `./http set Accepts application/vnd.travis-ci.2+json`
+$ eval `./http set User-Agent http/0.1`
 ```
 
 Travis requires these two headers at the bare minimum for all requests, regardless of authorization. User-Agent can be whatever you want.
 
-In order to do anything remotely interesting with Travis's API, we need to authorize ourselves to their API to prove we have an account there. Travis is tightly integrated with GitHub. According to Travis's docs, we need to acquire a GitHub personal access token (via GitHub's website) and convert that into a Travis authorization token using Travis's API.
+In order to do anything remotely interesting with Travis's API, we need to authorize ourselves to their API to prove we have an account there.
+
+Travis is tightly integrated with GitHub and even delegates to GitHub for authorization. According to Travis's docs, we need to acquire a GitHub personal access token (via GitHub's website) and convert that into a Travis authorization token using Travis's API.
 
 ```
 $ echo -n '{"github_token":"really-long-hex-string-here-REDACTED"}' | ./http post auth/github application/json
@@ -104,6 +106,7 @@ Last is the optional `content-type` argument which is explcitly set to `applicat
 Let's see what Travis API responds with:
 
 ```
+$ echo -n '{"github_token":"really-long-hex-string-here-REDACTED"}' | ./http post auth/github application/json
 POST https://api.travis-ci.com/auth/github
 User-Agent: http/0.1
 Accepts: application/vnd.travis-ci.2+json
@@ -117,7 +120,9 @@ StatusCode: 200
 {"access_token":"access-token-REDACTED"}
 ```
 
-That "access_token" line at the bottom is the API response containing the token we need to set for future requests. The lines above it are the request headers and POST body that was sent. Only the actual HTTP response body is written to `stdout`, all else is written to `stderr` which makes it easy to redirect/ignore whichever part you find uninteresting.
+That "access_token" JSON data at the bottom is the API response body containing the token we need to set for future requests. The lines above it are the request headers and POST body that was sent.
+
+Only the actual HTTP response body is written to `stdout`, all else is written to `stderr` which makes it easy to redirect/ignore whichever part you find uninteresting.
 
 As an example, let's ignore all the `stderr` output:
 ```
@@ -125,9 +130,9 @@ $ echo -n '{"github_token":"really-long-hex-string-here-REDACTED"}' | ./http pos
 {"access_token":"access-token-REDACTED"}$ _cursor here_
 ```
 
-As a matter of priniciple, `http` never outputs anything (not even extra trailing newlines) to `stdout` that did not come directly from the HTTP response body. That's why the shell '$' appears on the same line as the end of the JSON content.
+As a matter of priniciple, `http` never outputs anything (not even extra trailing newlines) to `stdout` that did not come directly from the HTTP response body. That's why the shell '$' sigil appears on the same line as the end of the JSON content; there was no extra newline outputted.
 
-Back to our example...
+Back to our API example...
 
 Now that we have an access token from Travis, we should set that into the "Authorization" header that Travis requires for authorized requests:
 ```
@@ -163,7 +168,19 @@ $ ./http delete repos/redacted-org-name/redacted-repo-name/caches?branch=master
 
 Simple!
 
-# What it does
+What if you've set up a complex `http` environment that you want to recall later? Easy:
+
+```
+$ ./http env
+export HTTPCLI_URL=$'https://api.travis-ci.com/'
+export HTTPCLI_HEADER_Authorization=$'token "access-token-REDACTED"'
+export HTTPCLI_HEADER_Accepts=$'application/vnd.travis-ci.2+json'
+export HTTPCLI_HEADER_User_Agent=$'http-cli/0.1'
+```
+
+Just redirect that `stdout` to a local file, `chmod +x` it and run it later to set up your environment again.
+
+# How it works
 
 This tool (`http`) relies on environment variables to minimize command invocation boilerplate. Have a common set of HTTP headers you need to pass for every request? Just set an environment variable for each one in your shell and `http` will pick those up and pass them along in the request.
 
