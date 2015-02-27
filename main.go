@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,26 +9,59 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"sort"
 	"strings"
 )
+
+var initial_environ, current_environ map[string]string
+
+// Convert a []string environment from os.Environ() to a more usable map.
+func environ_to_map(environ []string) (m map[string]string) {
+	m = make(map[string]string)
+	for _, kv := range environ {
+		if !strings.HasPrefix(kv, "HTTPCLI_") {
+			continue
+		}
+		equ := strings.IndexByte(kv, '=')
+		if equ == -1 {
+			continue
+		}
+		name, value := kv[:equ], kv[equ+1:]
+		m[name] = value
+	}
+	return
+}
 
 func Error(format string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, a...)
 }
 
-func output_bash_env(env_names []string) {
-	// Output the bash script to modify the environment:
-	for _, key := range env_names {
-		value := os.Getenv(key)
-		// Bash-escape the value as a single-quoted string with escaping rules:
-		bash_escape_value := strings.Replace(value, "\\", "\\\\", -1)
-		bash_escape_value = strings.Replace(bash_escape_value, "'", "\\'", -1)
-		fmt.Printf("export %s=$'%s'\n", key, bash_escape_value)
+func get_headers() (headers http.Header) {
+	// Get HTTP headers from environment:
+	headers = make(http.Header)
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "HTTPCLI_") {
+			continue
+		}
+		h := kv[len("HTTPCLI_"):]
+		equ := strings.IndexByte(h, '=')
+		if equ == -1 {
+			continue
+		}
+		name, value := h[:equ], h[equ+1:]
+		headers.Set(name, value)
 	}
-	fmt.Println()
-	fmt.Println("# This output must be `eval`ed in bash in order to have effect on the current environment.")
-	fmt.Println("# Example: $ eval `http-cli ...`")
+	return
+}
+
+func set_headers(headers http.Header) {
+	for key, values := range headers {
+		err := os.Setenv("HTTPCLI_"+key, strings.Join(values, " "))
+		if err != nil {
+			Error("Error setting $HTTPCLI_HEADERS: %s\n", err)
+			os.Exit(2)
+			return
+		}
+	}
 }
 
 func get_abs_url() *url.URL {
@@ -62,67 +94,22 @@ func set_abs_url(base_url *url.URL) {
 	}
 }
 
-func get_headers() http.Header {
-	// Get HTTP headers from environment:
-	headers_s := os.Getenv("HTTPCLI_HEADERS")
-	headers := make(http.Header)
-	if headers_s != "" {
-		err := json.Unmarshal([]byte(headers_s), &headers)
-		if err != nil {
-			Error("Error parsing JSON from $HTTPCLI_HEADERS: %s\n", err)
-			os.Exit(2)
-			return headers
-		}
+func output_bash_env() {
+	// Unset removed headers first:
+
+	curr_environ := os.Environ()
+
+	// Output the bash script to modify the environment:
+	for _, key := range curr_environ {
+		value := os.Getenv(key)
+		// Bash-escape the value as a single-quoted string with escaping rules:
+		bash_escape_value := strings.Replace(value, "\\", "\\\\", -1)
+		bash_escape_value = strings.Replace(bash_escape_value, "'", "\\'", -1)
+		fmt.Printf("export %s=$'%s'\n", key, bash_escape_value)
 	}
-	return headers
-}
-
-type keyValues struct {
-	key    string
-	values []string
-}
-
-// A headerSorter implements sort.Interface by sorting a []keyValues
-// by key. It's used as a pointer, so it can fit in a sort.Interface
-// interface value without allocation.
-type headerSorter struct {
-	kvs []keyValues
-}
-
-func (s *headerSorter) Len() int           { return len(s.kvs) }
-func (s *headerSorter) Swap(i, j int)      { s.kvs[i], s.kvs[j] = s.kvs[j], s.kvs[i] }
-func (s *headerSorter) Less(i, j int) bool { return s.kvs[i].key < s.kvs[j].key }
-
-// sortedKeyValues returns h's keys sorted in the returned kvs
-// slice. The headerSorter used to sort is also returned, for possible
-// return to headerSorterCache.
-func sortedKeyValues(h http.Header) (kvs []keyValues) {
-	kvs = make([]keyValues, 0, len(h))
-	for k, vv := range h {
-		kvs = append(kvs, keyValues{k, vv})
-	}
-
-	hs := &headerSorter{
-		kvs: kvs,
-	}
-	sort.Sort(hs)
-
-	return hs.kvs
-}
-
-func set_headers(headers http.Header) {
-	headers_s, err := json.Marshal(headers)
-	if err != nil {
-		Error("Error marshalling JSON to $HTTPCLI_HEADERS: %s\n", err)
-		os.Exit(2)
-		return
-	}
-	err = os.Setenv("HTTPCLI_HEADERS", string(headers_s))
-	if err != nil {
-		Error("Error setting $HTTPCLI_HEADERS: %s\n", err)
-		os.Exit(2)
-		return
-	}
+	fmt.Println()
+	fmt.Println("# This output must be `eval`ed in bash in order to have effect on the current environment.")
+	fmt.Println("# Example: $ eval `http-cli ...`")
 }
 
 func do_http(http_method string, body_required bool, args []string) {
@@ -256,6 +243,9 @@ Commands:
 	cmd := args[0]
 	args = args[1:]
 
+	// Copy current environment:
+	initial_environ = environ_to_map(os.Environ())
+
 	body_required := true
 	switch strings.ToLower(cmd) {
 	case "get", "delete":
@@ -278,11 +268,11 @@ Commands:
 				return
 			}
 			set_abs_url(base_url)
-			output_bash_env([]string{"HTTPCLI_URL"})
+			output_bash_env()
 		}
 		break
 
-	case "header-list":
+	case "list":
 		// Get HTTP headers from environment:
 		headers := get_headers()
 		for key, values := range headers {
@@ -290,7 +280,7 @@ Commands:
 		}
 		break
 
-	case "header-set":
+	case "set":
 		// Must be evaluated on the bash console as "eval `http-cli header-set ...`"
 
 		// Get HTTP headers from environment:
@@ -303,18 +293,19 @@ Commands:
 		} else {
 
 		}
+
 		set_headers(headers)
 
 		// Output the bash evaluation statements:
-		output_bash_env([]string{"HTTPCLI_HEADERS"})
+		output_bash_env()
 		break
 
-	case "header-clear":
+	case "clear":
 		// Must be evaluated on the bash console as "eval `http-cli header-clear ...`"
 		set_headers(nil)
 
 		// Output the bash evaluation statements:
-		output_bash_env([]string{"HTTPCLI_HEADERS"})
+		output_bash_env()
 		break
 
 	default:
