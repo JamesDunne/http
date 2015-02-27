@@ -162,7 +162,7 @@ func output_bash_env() {
 	// Comments cannot come first if using `eval`.
 	// fmt.Println()
 	// fmt.Println("# This output must be `eval`ed in bash in order to have effect on the current environment.")
-	// fmt.Println("# Example: $ eval `http-cli ...`")
+	// fmt.Println("# Example: $ eval `http ...`")
 }
 
 func do_http(http_method string, body_required bool, args []string) {
@@ -270,7 +270,7 @@ func main() {
 	args := os.Args[1:][:]
 	if len(args) == 0 {
 		Error(`Usage:
-http-cli <command> [args...]
+%s <command> [args...]
 
 Commands:
   url    [absolute_url]
@@ -295,7 +295,7 @@ Commands:
   POST   <relative_url> [content-type]
   PUT    <relative_url> [content-type]
     Invoke HTTP POST or PUT. Body data is read from stdin.
-`)
+`, os.Args[0])
 		os.Exit(1)
 		return
 	}
@@ -318,10 +318,11 @@ Commands:
 		break
 
 	case "url":
-		// Must be evaluated on the bash console as "eval `http-cli header-set ...`"
+		// Must be evaluated on the bash console as "eval `http header-set ...`"
 		if len(args) == 0 {
 			base_url := get_abs_url()
-			fmt.Printf("%s\n", base_url)
+			fmt.Printf("%s", base_url)
+			fmt.Fprintln(os.Stderr)
 		} else if len(args) == 1 {
 			base_url, err := url.Parse(args[0])
 			if err != nil {
@@ -343,7 +344,7 @@ Commands:
 		break
 
 	case "set":
-		// Must be evaluated on the bash console as "eval `http-cli header-set ...`"
+		// Must be evaluated on the bash console as "eval `http header-set ...`"
 
 		// Get HTTP headers from environment:
 		headers := get_headers()
@@ -363,7 +364,7 @@ Commands:
 		break
 
 	case "clear":
-		// Must be evaluated on the bash console as "eval `http-cli header-clear ...`"
+		// Must be evaluated on the bash console as "eval `http header-clear ...`"
 		set_headers(nil)
 
 		// Output the bash evaluation statements:
