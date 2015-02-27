@@ -1,41 +1,7 @@
 # What it is
-A CLI for invoking HTTP APIs, using easily-modifiable environment variables for cross-request context.
-
-# Justification
-
-I started this project as the ultimate result of a bit of yak-shaving. I was researching how to clear out [Travis CI](http://travis-ci.org/)'s caches and came across their HTTP API for doing so. My first instinct was to attempt HTTP API calls from the OS X commandline using `curl`. Of course, after a bit of testing, it seems standard `curl` on OS X does not have HTTPS enabled. Fail.
-
-Next up was `wget`, which does work and supports HTTPS out of the box.
-
-I tried to wrap up all the wget boilerplate into a simple bash script, but failed because bash scripting is completely unreasonable and insane. Bash makes basic string manipulation and quoting so incredibly difficult and obtuse that I just gave up. I gave it several honest tries and nothing was working; the bash man page was no help either.
-
-Even if I did manage to wrap wget in a script, its output is not flexible enough for programmatic control (for my tastes). It seems more fit for single-use requests made by humans than multi-use requests made by programs.
-
-I decided I can do a better job writing a small tool in Go that only does HTTP API invocations in an extremely simple and direct way, consistent with how modern HTTP APIs are implemented and what they expect. Making the common thing easy to do is critical in reducing overall friction in any process.
-
-# What it does
-
-This tool (`http`) relies on environment variables to minimize command invocation boilerplate. Have a common set of HTTP headers you need to pass for every request? Just set an environment variable for each one in your shell and `http` will pick those up and pass them along in the request.
-
-The downside of using environment variables to maintain state is that a process cannot modify its parent process's environment. This means that in common shell contexts, any application cannot modify the shell's environment. There is a hacky workaround for this, and it's to emit a series of shell script statements to be `eval`uated by the parent shell.
-
-```
-eval `./http set User-Agent my-custom-agent/0.1`
-```
-
-The output of the 'set' command used above would be:
-
-```
-export HTTPCLI_HEADER_User_Agent=$'my-custom-agent/0.1'
-```
-
-Coming from a DOS background, personally, I think this is asinine, but of course I do see the security value in blocking such an ability in a POSIX system. Still, forcing the user to invoke my process with an eval wrapper is just ridiculous. If anyone knows of a more standard and cross-platform way to store global state without resorting to needlessly complex multi-process architectures involving busses or shared memory, I'm all ears. At the end of the day, I just want a way to store some simple variable in the shell context directly from within my Go process and pick it up later, without having to make my user jump through stupid hoops.
+A CLI tool for invoking modern HTTP APIs, using easily-modifiable environment variables for cross-request context.
 
 # Usage
-
-In the below usage statements, `[name]` means an optional argument, while `<name>` means a required argument.
-
-This commandline interface is subject to change. I'll likely keep the same command names, but argument parsing might grow to include some useful sub-features. Command names are not case-sensitive.
 
 ```
 $ ./http
@@ -71,6 +37,12 @@ Commands:
     Invoke HTTP POST or PUT. Body data is read from stdin and buffered.
     [content-type] default is "application/json".
 ```
+
+In the above usage statements, `[name]` means an optional argument, and `<name>` means a required argument.
+
+This commandline interface is subject to change. I'll likely keep the same command names, but argument parsing might grow to include some useful sub-features. Command names are not case-sensitive.
+
+# Examples
 
 First, let's set up a base URL to use for all subsequent requests:
 ```
@@ -122,3 +94,30 @@ Let's set the "Authorization" header that Travis requires for authorized request
 $ ./http set Authorization "token \"shorter-token-REDACTED\""
 ```
 
+# What it does
+
+This tool (`http`) relies on environment variables to minimize command invocation boilerplate. Have a common set of HTTP headers you need to pass for every request? Just set an environment variable for each one in your shell and `http` will pick those up and pass them along in the request.
+
+The downside of using environment variables to maintain state is that a process cannot modify its parent process's environment. This means that in common shell contexts, any application cannot modify the shell's environment. There is a hacky workaround for this, and it's to emit a series of shell script statements to be `eval`uated by the parent shell.
+
+```
+eval `./http set User-Agent my-custom-agent/0.1`
+```
+
+The output of the 'set' command used above would be:
+
+```
+export HTTPCLI_HEADER_User_Agent=$'my-custom-agent/0.1'
+```
+
+RANT: Coming from a DOS background, personally, I think this is asinine, but of course I do see the security value in blocking such an ability in a POSIX system. Still, forcing the user to invoke my process with an eval wrapper is just ridiculous. If anyone knows of a more standard and cross-platform way to store global state without resorting to needlessly complex multi-process architectures involving busses or shared memory, I'm all ears. At the end of the day, I just want a way to store some simple variable in the shell context directly from within my Go process and pick it up later, without having to make my user jump through stupid hoops.
+
+# Justification
+
+I started this project as the ultimate result of a bit of yak-shaving. I was researching how to clear out [Travis CI](http://travis-ci.org/)'s caches and came across their HTTP API for doing so. My first instinct was to attempt HTTP API calls from the OS X commandline using `curl`. Of course, after a bit of testing, it seems standard `curl` on OS X does not have HTTPS enabled. Fail.
+
+Next up was `wget`, which does work and supports HTTPS out of the box. I tried to wrap up all the wget boilerplate into a simple bash script, but failed because bash scripting is completely unreasonable and insane. Bash makes basic string manipulation and quoting so incredibly difficult and obtuse that I just gave up. I gave it several honest tries and nothing was working; the bash man page was no help either.
+
+Even if I did manage to wrap wget in a script, its output is not flexible enough for programmatic control (for my tastes). It seems more fit for single-use requests made by humans than multi-use requests made by programs.
+
+I decided I can do a better job writing a small tool in Go that only does HTTP API invocations in an extremely simple and direct way, consistent with how modern HTTP APIs are implemented and what they expect. Making the common thing easy to do is critical in reducing overall friction in any process.
