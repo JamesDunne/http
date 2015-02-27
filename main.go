@@ -224,14 +224,19 @@ func do_http(http_method string, body_required bool, args []string) {
 			return
 		}
 
+		// Default to `application/json` content-type; override with 2nd arg:
+		content_type := "application/json"
 		if len(args) >= 2 {
-			req.Header.Set("Content-Type", args[1])
+			content_type = args[1]
 		}
+		req.Header.Set("Content-Type", content_type)
 
 		// Create a Buffer to read the `[]byte` as the HTTP body:
 		buf := bytes.NewBuffer(body_data)
-		req.Body = ioutil.NopCloser(buf)
+
+		// Set the Body and ContentLength:
 		req.ContentLength = int64(buf.Len())
+		req.Body = ioutil.NopCloser(buf)
 	}
 
 	// for debugging:
@@ -241,10 +246,11 @@ func do_http(http_method string, body_required bool, args []string) {
 	}
 	Error("\n")
 	if body_required {
-		Error("%s\n", body_data)
+		Error("%s\n\n", body_data)
 	}
 
 	// Make the request:
+	Error("Sending HTTP request...\n\n")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		Error("HTTP error: %s\n", err)
@@ -252,13 +258,11 @@ func do_http(http_method string, body_required bool, args []string) {
 		return
 	}
 
-	if resp.StatusCode != 200 {
-		Error("%d\n", resp.StatusCode)
-	}
+	Error("StatusCode: %d\n", resp.StatusCode)
 	if resp.Body != nil {
 		_, err = io.Copy(os.Stdout, resp.Body)
 		if err != nil {
-			Error("Error copying: %s\n", err)
+			Error("Error copying response body to stdout: %s\n", err)
 		}
 		// For nicer shell output in the event that stderr -> stdout.
 		// We don't want to append any unnecessary \n to stdout.
@@ -279,7 +283,7 @@ Commands:
   clear
     Clears all HTTP headers in environment.
 
-  set <header_name> <header_value>
+  set    <header_name> <header_value>
     Sets a custom HTTP header in environment.
 
   list
