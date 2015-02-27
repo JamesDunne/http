@@ -9,8 +9,6 @@ invoke()
 
 	if [[ "$cmd" == "set" ]] || [[ "$cmd" == "clear" ]] || [[ "$cmd" == "url" && -n $rest ]]; then
 		# Eval the output bash script:
-		echo EVAL!
-		./http-cli "$cmd" "$rest"
 		eval `./http-cli "$cmd" $rest`
 	else
 		# No eval required:
