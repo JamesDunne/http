@@ -145,9 +145,19 @@ Crap, we gotta do that annoying `eval` workaround...
 $ eval `./http set Authorization "token \"access-token-REDACTED\""`
 ```
 
-Note that Travis requires literal double-quotes surrounding the access token.
+Note that Travis requires literal double-quotes surrounding the access token. THAT is the gateway to bash string quoting hell. Be warned.
 
-Now that we're authorized let's check out some caches:
+What do we have so far in our HTTP headers? I forget...
+```
+$ ./http list
+Authorization: token "access-token-REDACTED"
+Accepts: application/vnd.travis-ci.2+json
+User-Agent: http/0.1
+```
+
+Oh, right. Good to know.
+
+Now that we've got an authorization token, let's check out some authorized APIs, namely the `cache` entities:
 ```
 $ ./http get repos/redacted-org-name/redacted-repo-name/caches?branch=master
 GET https://api.travis-ci.com/redacted-org-name/redacted-repo-name/caches?branch=master
@@ -161,9 +171,10 @@ StatusCode: 200
 {"caches":[{"repository_id":0,"size":207755213,"slug":"cache--python-2.7","branch":"master","last_modified":"2015-02-27T18:56:19Z"}]}
 ```
 
-Let's delete that cache:
+Cool. Let's delete that cache:
 ```
 $ ./http delete repos/redacted-org-name/redacted-repo-name/caches?branch=master
+(redundant output; same as GET)
 ```
 
 Simple!
@@ -180,9 +191,19 @@ export HTTPCLI_HEADER_User_Agent=$'http-cli/0.1'
 
 Just redirect that `stdout` to a local file, `chmod +x` it and run it later to set up your environment again.
 
+Now how about clearing all HTTP headers?
+```
+$ ./http clear
+unset HTTPCLI_HEADER_Authorization
+unset HTTPCLI_HEADER_Accepts
+unset HTTPCLI_HEADER_User_Agent
+```
+
+Send that to `eval` and you're good to go.
+
 # How it works
 
-This tool (`http`) relies on environment variables to minimize command invocation boilerplate. Have a common set of HTTP headers you need to pass for every request? Just set an environment variable for each one in your shell and `http` will pick those up and pass them along in the request.
+This tool (`http`) relies on environment variables to minimize command invocation boilerplate.
 
 The downside of using environment variables to maintain state is that a process cannot modify its parent process's environment. This means that in common shell contexts, any application cannot modify the shell's environment. There is a hacky workaround for this, and it's to emit a series of shell script statements to be `eval`uated by the parent shell.
 
@@ -196,7 +217,9 @@ The output of the 'set' command used above would be:
 export HTTPCLI_HEADER_User_Agent=$'my-custom-agent/0.1'
 ```
 
-RANT: Coming from a DOS background, personally, I think this is asinine, but of course I do see the security value in blocking such an ability in a POSIX system. Still, forcing the user to invoke my process with an eval wrapper is just ridiculous. If anyone knows of a more standard and cross-platform way to store global state without resorting to needlessly complex multi-process architectures involving busses or shared memory, I'm all ears. At the end of the day, I just want a way to store some simple variable in the shell context directly from within my Go process and pick it up later, without having to make my user jump through stupid hoops.
+RANT: Coming from a DOS background, personally, I think this is asinine, but of course I do see the security value in blocking such an ability in a POSIX system. Still, forcing the user to invoke my process with an `eval` wrapper is just ridiculous.
+
+If anyone knows of a more standard and cross-platform way to store global state without resorting to needlessly complex multi-process architectures involving busses or shared memory, I'm all ears. At the end of the day, I just want a way to store some simple variable in the shell context directly from within my Go process and pick it up later, without having to make my user jump through stupid hoops.
 
 # Justification
 
