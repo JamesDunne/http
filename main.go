@@ -280,6 +280,7 @@ Commands:
   url    [absolute_url]
     Get or set base URL in environment.
 
+  -- Managing HTTP headers:
   clear
     Clears all HTTP headers in environment.
 
@@ -292,13 +293,17 @@ Commands:
   env
     Generate a bash script to export current environment.
 
+  -- Making HTTP requests:
   GET    <relative-url>
   DELETE <relative-url>
-    Invoke HTTP GET or DELETE. No body data is sent.
+    Invoke HTTP GET or DELETE.
+	<relative-url> is combined with [absolute_url] from environment.
+	No body data is sent.
 
   POST   <relative_url> [content-type]
   PUT    <relative_url> [content-type]
-    Invoke HTTP POST or PUT. Body data is read from stdin.
+    Invoke HTTP POST or PUT. Body data is read from stdin and buffered.
+	[content-type] default is "application/json".
 `, os.Args[0])
 		os.Exit(1)
 		return
