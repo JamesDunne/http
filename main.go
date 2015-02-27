@@ -160,9 +160,9 @@ func output_bash_env() {
 	}
 
 	// Comments cannot come first if using `eval`.
-	fmt.Println()
-	fmt.Println("# This output must be `eval`ed in bash in order to have effect on the current environment.")
-	fmt.Println("# Example: $ eval `http-cli ...`")
+	// fmt.Println()
+	// fmt.Println("# This output must be `eval`ed in bash in order to have effect on the current environment.")
+	// fmt.Println("# Example: $ eval `http-cli ...`")
 }
 
 func do_http(http_method string, body_required bool, args []string) {
@@ -285,6 +285,9 @@ Commands:
   list
     List current HTTP headers in environment.
 
+  env
+    Generate a bash script to export current environment.
+
   GET    <relative-url>
   DELETE <relative-url>
     Invoke HTTP GET or DELETE. No body data is sent.
@@ -364,6 +367,12 @@ Commands:
 		set_headers(nil)
 
 		// Output the bash evaluation statements:
+		output_bash_env()
+		break
+
+	case "env":
+		// Output the bash evaluation statements:
+		initial_environ = make(map[string]string)
 		output_bash_env()
 		break
 
