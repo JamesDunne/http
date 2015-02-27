@@ -44,55 +44,124 @@ This commandline interface is subject to change. I'll likely keep the same comma
 
 # Examples
 
-First, let's set up a base URL to use for all subsequent requests:
+As an example, let's target the Travis CI build system's HTTP API.
+
+First, let's set up a base URL to use for all subsequent requests. This is absolutely required.
+
 ```
 $ ./http url https://api.travis-ci.com/
+export HTTPCLI_URL=$'https://api.travis-ci.com/'
+$ env | grep HTTPCLI_
+(nothing here)
+$
 ```
 
-Confirming that base URL:
+Hmm... That wasn't too useful. Why'd it output an `export` statement? Why didn't it modify the shell environment?
+
+It seems that a process cannot modify its parent process's environment. In this context, that rule means that my `http` tool cannot modify the shell's environment directly. We have to resort to outputting bash commands to modify the shell's environment.
+
+Let's try this instead:
+```
+$ eval `./http url https://api.travis-ci.com/`
+$ env | grep HTTPCLI_
+HTTPCLI_URL=https://api.travis-ci.com/
+$
+```
+
+There we go. The trick is to use the `eval` statement to evaluate the output of the script in the current environment.
+
+Let's confirm that base URL via the `http` tool itself:
 ```
 $ ./http url
 https://api.travis-ci.com/
 ```
 
-Now, let's set up some common headers that we'll need. FYI, we're targeting the Travis CI build system's HTTP API as an example here.
+The environment is now set up such that all subsequent requests are made to URLs that begin with this absolute URL.
+
+Now let's set up some common headers that Travis requires:
 
 ```
 $ ./http set Accepts application/vnd.travis-ci.2+json
-$ ./http set User-Agent http-cli/0.1
+$ ./http set User-Agent http/0.1
 ```
 
-Travis requires these two headers at the bare minimum for all requests, regardless of authorization.
+Travis requires these two headers at the bare minimum for all requests, regardless of authorization. User-Agent can be whatever you want.
 
-Now, we need to convert a GitHub authorization token into a Travis authorization token. This is per the Travis API documentation.
+In order to do anything remotely interesting with Travis's API, we need to authorize ourselves to their API to prove we have an account there. Travis is tightly integrated with GitHub. According to Travis's docs, we need to acquire a GitHub personal access token (via GitHub's website) and convert that into a Travis authorization token using Travis's API.
 
 ```
 $ echo -n '{"github_token":"really-long-hex-string-here-REDACTED"}' | ./http post auth/github application/json
 ```
 
-As you can see, an `echo` statement appears first because we need to send the POST body data via `stdin` to `http`.
+As you can see, an `echo` statement appears first because we need to send the POST body data via `stdin` to `http`. We do this by piping (`|`) the `stdout` of the `echo` process to the `stdin` of the `http` process.
 
-Our command is `post` which means to send a POST request to the API server. Following that, we supply a relative URL `auth/github`. Promptly following that is the Content-Type header for the POST body we're sending, which is `application/json` in this case.
+We use the `http`'s `post` command which sends an HTTP POST request to the API server.
+
+The first argument is the relative URL `auth/github` to POST the request to; this is relative to the absolute base URL we supplied earlier and set in the shell's environment, composing to the final URL `https://api.travis-ci.com/auth/github`.
+
+Last is the optional `content-type` argument which is explcitly set to `application/json` here, but `application/json` is the default `content-type` anyway so it's a bit redundant in this example.
 
 Let's see what Travis API responds with:
 
 ```
 POST https://api.travis-ci.com/auth/github
-Content-Type: application/json
+User-Agent: http/0.1
 Accepts: application/vnd.travis-ci.2+json
-User-Agent: http-cli/0.1
+Content-Type: application/json
 
 {"github_token":"really-long-hex-string-here-REDACTED"}
-{"access_token":"shorter-token-REDACTED"}
+
+Sending HTTP request...
+
+StatusCode: 200
+{"access_token":"access-token-REDACTED"}
 ```
 
-That "access_token" line is the API response containing the token we need to set for future requests. The line above it is the POST body that was sent.
+That "access_token" line at the bottom is the API response containing the token we need to set for future requests. The lines above it are the request headers and POST body that was sent. Only the actual HTTP response body is written to `stdout`, all else is written to `stderr` which makes it easy to redirect/ignore whichever part you find uninteresting.
 
-Let's set the "Authorization" header that Travis requires for authorized requests.
+As an example, let's ignore all the `stderr` output:
+```
+$ echo -n '{"github_token":"really-long-hex-string-here-REDACTED"}' | ./http post auth/github 2>/dev/null
+{"access_token":"access-token-REDACTED"}$ _cursor here_
+```
 
+As a matter of priniciple, `http` never outputs anything (not even extra trailing newlines) to `stdout` that did not come directly from the HTTP response body. That's why the shell '$' appears on the same line as the end of the JSON content.
+
+Back to our example...
+
+Now that we have an access token from Travis, we should set that into the "Authorization" header that Travis requires for authorized requests:
 ```
-$ ./http set Authorization "token \"shorter-token-REDACTED\""
+$ ./http set Authorization "token \"access-token-REDACTED\""
+export HTTPCLI_HEADER_Authorization=$'token "access-token-REDACTED"'
 ```
+
+Crap, we gotta do that annoying `eval` workaround...
+```
+$ eval `./http set Authorization "token \"access-token-REDACTED\""`
+```
+
+Note that Travis requires literal double-quotes surrounding the access token.
+
+Now that we're authorized let's check out some caches:
+```
+$ ./http get repos/redacted-org-name/redacted-repo-name/caches?branch=master
+GET https://api.travis-ci.com/redacted-org-name/redacted-repo-name/caches?branch=master
+Accepts: application/vnd.travis-ci.2+json
+User-Agent: http/0.1
+Authorization: token "access-token-REDACTED"
+
+Sending HTTP request...
+
+StatusCode: 200
+{"caches":[{"repository_id":0,"size":207755213,"slug":"cache--python-2.7","branch":"master","last_modified":"2015-02-27T18:56:19Z"}]}
+```
+
+Let's delete that cache:
+```
+$ ./http delete repos/redacted-org-name/redacted-repo-name/caches?branch=master
+```
+
+Simple!
 
 # What it does
 
