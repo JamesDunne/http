@@ -130,7 +130,7 @@ func do_http(http_method string, body_required bool, args []string) {
 	base_url := get_abs_url()
 	headers := get_headers()
 
-	if len(args) < 1 {
+	if len(args) == 0 {
 		Error("Missing required relative URL\n")
 		os.Exit(1)
 		return
@@ -171,27 +171,35 @@ func do_http(http_method string, body_required bool, args []string) {
 		for _, name := range exclude_headers {
 			delete(req.Header, name)
 		}
-		fmt.Printf("%s\n", headers)
 	}
 
 	// Set up body content-type and data:
+	var body_data []byte
 	if body_required {
 		// Read all of stdin to a `[]byte` buffer:
-		body_data, err := ioutil.ReadAll(os.Stdin)
+		body_data, err = ioutil.ReadAll(os.Stdin)
 		if err != nil {
 			Error("Error reading stdin: %s", err)
 			os.Exit(3)
 			return
 		}
 
-		// for debugging:
-		Error("BODY: %s\n", body_data)
+		if len(args) >= 2 {
+			req.Header.Set("Content-Type", args[1])
+		}
 
 		// Create a Buffer to read the `[]byte` as the HTTP body:
 		buf := bytes.NewBuffer(body_data)
 		req.Body = ioutil.NopCloser(buf)
 		req.ContentLength = int64(buf.Len())
 	}
+
+	// for debugging:
+	Error("%s %s\n", http_method, api_url)
+	for key, values := range req.Header {
+		Error("%s: %s\n", key, strings.Join(values, " "))
+	}
+	Error("\n%s\n", body_data)
 
 	// Make the request:
 	resp, err := http.DefaultClient.Do(req)
@@ -202,10 +210,14 @@ func do_http(http_method string, body_required bool, args []string) {
 	}
 
 	if resp.StatusCode != 200 {
-		Error("%d", resp.StatusCode)
+		Error("%d\n", resp.StatusCode)
 	}
 	if resp.Body != nil {
-		io.Copy(os.Stdout, resp.Body)
+		_, err = io.Copy(os.Stdout, resp.Body)
+		if err != nil {
+			Error("Error copying: %s\n", err)
+		}
+		fmt.Println()
 	}
 }
 
@@ -232,16 +244,9 @@ Commands:
   DELETE <relative-url>
     Invoke HTTP GET or DELETE. No body data is sent.
 
-  POST   <relative_url>
-  PUT    <relative_url>
+  POST   <relative_url> [content-type]
+  PUT    <relative_url> [content-type]
     Invoke HTTP POST or PUT. Body data is read from stdin.
-
-Environment variables:
-  * HTTPCLI_URL     = base absolute URL for HTTP requests
-  * HTTPCLI_HEADERS = JSON encoding of HTTP headers to pass, e.g.
-    {
-      "Accepts": "content-type-here"
-    }
 `)
 		os.Exit(1)
 		return
