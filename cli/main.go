@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -275,6 +276,7 @@ func do_http(http_method string, body_required bool, args []string) {
 
 func main() {
 	args := os.Args[1:][:]
+	_, tool_name := filepath.Split(os.Args[0])
 	if len(args) == 0 {
 		Error(`Usage:
 %s <command> [args...]
@@ -307,7 +309,7 @@ Commands:
   PUT    <relative_url> [content-type]
     Invoke HTTP POST or PUT. Body data is read from stdin and buffered.
 	[content-type] default is "application/json".
-`, os.Args[0])
+`, tool_name)
 		os.Exit(1)
 		return
 	}
