@@ -18,8 +18,32 @@ func Error(format string, a ...interface{}) {
 
 var initial_environ, current_environ map[string]string
 
-const env_prefix = "HTTPCLI_"
-const header_prefix = env_prefix + "HEADER_"
+const header_prefix = "HEADER_"
+
+var env_path = path.Join(os.TempDir(), ".http-cli.env")
+
+func load_env() {
+	// Load current environment:
+	var env_data []byte
+	env_data, err := ioutil.ReadFile(env_path)
+	if err != nil {
+		env_data = []byte{}
+	}
+	lines := strings.Split(string(env_data), "\n")
+
+	// Copy current environment:
+	initial_environ = environ_to_map(lines)
+	current_environ = environ_to_map(lines)
+}
+
+func store_env() {
+	// Combine all env vars into a string:
+	env := ""
+	for key, value := range current_environ {
+		env += key + "=" + value + "\n"
+	}
+	ioutil.WriteFile(env_path, []byte(env), 0)
+}
 
 func headerkey_to_envkey(k string) string {
 	return header_prefix + strings.Replace(k, "-", "_", -1)
@@ -33,14 +57,10 @@ func envkey_to_headerkey(k string) string {
 	return strings.Replace(k[len(header_prefix):], "_", "-", -1)
 }
 
-// Convert a []string environment from os.Environ() to a more usable map.
+// Convert a []string environment to a more usable map.
 func environ_to_map(environ []string) (m map[string]string) {
 	m = make(map[string]string)
 	for _, kv := range environ {
-		// Ignore things we don't care about:
-		if !strings.HasPrefix(kv, env_prefix) {
-			continue
-		}
 		// Split by first '=':
 		equ := strings.IndexByte(kv, '=')
 		if equ == -1 {
@@ -53,11 +73,6 @@ func environ_to_map(environ []string) (m map[string]string) {
 }
 
 func setenv(key, value string) (err error) {
-	err = os.Setenv(key, value)
-	if err != nil {
-		return err
-	}
-
 	// Replicate the setting in the current_environ map:
 	if value == "" {
 		delete(current_environ, key)
@@ -108,20 +123,20 @@ func set_headers(headers http.Header) {
 }
 
 func get_abs_url() *url.URL {
-	url_s := current_environ[env_prefix+"URL"]
+	url_s := current_environ["URL"]
 	if url_s == "" {
-		Error("Missing $%sURL env var\n", env_prefix)
+		Error("No base URL set\n")
 		os.Exit(2)
 		return nil
 	}
 	base_url, err := url.Parse(url_s)
 	if err != nil {
-		Error("Error parsing $%sURL: %s\n", env_prefix, err)
+		Error("Error parsing base URL: %s\n", err)
 		os.Exit(2)
 		return nil
 	}
 	if !base_url.IsAbs() {
-		Error("$%sURL must be an absolute URL\n", env_prefix)
+		Error("Base URL must be an absolute URL\n")
 		os.Exit(2)
 		return nil
 	}
@@ -129,45 +144,22 @@ func get_abs_url() *url.URL {
 }
 
 func set_abs_url(base_url *url.URL) {
-	if !base_url.IsAbs() {
-		Error("$%sURL must be an absolute URL\n", env_prefix)
-		os.Exit(2)
-		return
+	new_value := ""
+	if base_url != nil {
+		if !base_url.IsAbs() {
+			Error("Base URL must be an absolute URL\n")
+			os.Exit(2)
+			return
+		}
+		new_value = base_url.String()
 	}
-	err := setenv(env_prefix+"URL", base_url.String())
+
+	err := setenv("URL", new_value)
 	if err != nil {
-		Error("Error setting $%sURL: %s\n", env_prefix, err)
+		Error("Error setting base URL: %s\n", err)
 		os.Exit(2)
 		return
 	}
-}
-
-// Output a bash script to modify the environment:
-func output_bash_env() {
-	// Unset removed headers first:
-	for key, _ := range initial_environ {
-		if _, ok := current_environ[key]; !ok {
-			fmt.Printf("unset %s\n", key)
-		}
-	}
-
-	// Set new or existing headers:
-	for key, value := range current_environ {
-		if initial_environ[key] == value {
-			continue
-		}
-
-		// Bash-escape the value as a single-quoted string with escaping rules:
-		bash_escape_value := strings.Replace(value, "\\", "\\\\", -1)
-		bash_escape_value = strings.Replace(bash_escape_value, "'", "\\'", -1)
-
-		fmt.Printf("export %s=$'%s'\n", key, bash_escape_value)
-	}
-
-	// Comments cannot come first if using `eval`.
-	// fmt.Println()
-	// fmt.Println("# This output must be `eval`ed in bash in order to have effect on the current environment.")
-	// fmt.Println("# Example: $ eval `http ...`")
 }
 
 func do_http(http_method string, body_required bool, args []string) {
@@ -289,20 +281,20 @@ func main() {
 
 Commands:
   url    [absolute_url]
-    Get or set base URL in environment.
+    Gets or sets base URL in environment.
+
+  reset
+    Resets environment; clears out HTTP headers and base URL.
 
   -- Managing HTTP headers:
-  clear
-    Clears all HTTP headers in environment.
-
   set    <header_name> <header_value>
     Sets a custom HTTP header in environment.
 
   list
     List current HTTP headers in environment.
 
-  env
-    Generate a bash script to export current environment.
+  clear
+    Clears all HTTP headers in environment.
 
   -- Making HTTP requests:
   GET    <relative-url>
@@ -324,9 +316,7 @@ Commands:
 	cmd := args[0]
 	args = args[1:]
 
-	// Copy current environment:
-	initial_environ = environ_to_map(os.Environ())
-	current_environ = environ_to_map(os.Environ())
+	load_env()
 
 	body_required := true
 	switch strings.ToLower(cmd) {
@@ -338,7 +328,6 @@ Commands:
 		break
 
 	case "url":
-		// Must be evaluated on the bash console as "eval `http header-set ...`"
 		if len(args) == 0 {
 			base_url := get_abs_url()
 			fmt.Printf("%s", base_url)
@@ -351,8 +340,14 @@ Commands:
 				return
 			}
 			set_abs_url(base_url)
-			output_bash_env()
+			store_env()
 		}
+		break
+
+	case "reset":
+		set_headers(nil)
+		set_abs_url(nil)
+		store_env()
 		break
 
 	case "list":
@@ -364,8 +359,6 @@ Commands:
 		break
 
 	case "set":
-		// Must be evaluated on the bash console as "eval `http header-set ...`"
-
 		// Get HTTP headers from environment:
 		headers := get_headers()
 		if len(args) == 2 {
@@ -378,23 +371,12 @@ Commands:
 		}
 
 		set_headers(headers)
-
-		// Output the bash evaluation statements:
-		output_bash_env()
+		store_env()
 		break
 
 	case "clear":
-		// Must be evaluated on the bash console as "eval `http header-clear ...`"
 		set_headers(nil)
-
-		// Output the bash evaluation statements:
-		output_bash_env()
-		break
-
-	case "env":
-		// Output the bash evaluation statements:
-		initial_environ = make(map[string]string)
-		output_bash_env()
+		store_env()
 		break
 
 	default:
