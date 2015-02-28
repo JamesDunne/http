@@ -1,3 +1,5 @@
+![Build Status](https://travis-ci.org/JamesDunne/http.svg?branch=master)
+
 # What it is
 A CLI tool for invoking modern HTTP APIs, making use of temp files for sharing HTTP headers across multple requests.
 
