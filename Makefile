@@ -1,2 +1,3 @@
-http-cli: cli/main.go
-	go build -o http-cli ./cli
+http: cli/main.go
+	rm -f http
+	go build -o http ./cli
