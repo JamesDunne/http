@@ -21,7 +21,7 @@ var initial_environ, current_environ map[string]string
 
 const header_prefix = "HEADER_"
 
-var env_path = path.Join(os.TempDir(), ".http-cli.env")
+var env_path = path.Join(TempDir(), ".http-cli.env")
 
 func load_env() {
 	// Load current environment:
@@ -43,7 +43,11 @@ func store_env() {
 	for key, value := range current_environ {
 		env += key + "=" + value + "\n"
 	}
-	ioutil.WriteFile(env_path, []byte(env), 0)
+
+	err := ioutil.WriteFile(env_path, []byte(env), 0600)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func headerkey_to_envkey(k string) string {
