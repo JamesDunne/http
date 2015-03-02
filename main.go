@@ -199,9 +199,16 @@ func do_http(http_method string, body_required bool, args []string) {
 		Host:     base_url.Host,
 		User:     base_url.User,
 		Path:     path.Join(base_path, rel_url.Path),
-		RawQuery: rel_url.RawQuery,
+		RawQuery: base_url.RawQuery,
 		Fragment: rel_url.Fragment,
 	}
+
+	// Add rel_url's query to base_url's:
+	q := api_url.Query()
+	for k, v := range rel_url.Query() {
+		q[k] = v
+	}
+	api_url.RawQuery = q.Encode()
 
 	// Set up the request:
 	req := &http.Request{
