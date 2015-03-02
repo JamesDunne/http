@@ -78,7 +78,7 @@ func do_http(http_method string, args []string) {
 		rel_url := arg_url
 
 		// Combine absolute URL base with relative URL argument:
-		api_url := &url.URL{
+		api_url = &url.URL{
 			Scheme:   base_url.Scheme,
 			Host:     base_url.Host,
 			User:     base_url.User,
