@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,14 +57,17 @@ Commands:
   session            - Displays environment session ID. Use $HTTPCLI_SESISON_ID
                        env var to override. Default is "yyyy-MM-dd-########"
                        with datestamp and parent process pid.
-  reset              - Resets environment; clears out HTTP headers and base URL.
+  reset              - Resets environment; clears HTTP headers and base URL.
 
   set <name> <value> - Sets a custom HTTP header in environment.
   list               - List current HTTP headers in environment.
-  clear              - Clears all HTTP headers in environment.
+  clear              - Clears HTTP headers in environment.
+
+  basic <user> <password>
+                     - Set Basic authentication header.
 
 HTTP:
-  <method> <url> [content-type]
+  <method> <url> [content-type] [options...]
     Invoke HTTP method against <url>; if <url> is relative, <url> is combined
     with <base_url>.
 
@@ -75,6 +79,12 @@ HTTP:
     Transfer-Modes are not supported currently.
 
     [content-type] default is "application/json"
+
+    [options...]:
+      -x <header1,header2,header3,...>
+	                 - Exclude headers from request
+      -p             - Pretty-print JSON output
+      -q             - Quiet mode; only output response body to stdout
 `, tool_name)
 		os.Exit(1)
 		return
@@ -133,6 +143,20 @@ HTTP:
 			os.Exit(1)
 			return
 		}
+
+		set_headers(headers)
+		store_env()
+		break
+
+	case "basic":
+		if len(args) != 2 {
+			Error("Required username and password arguments\n")
+			os.Exit(1)
+			return
+		}
+
+		headers, _ := get_headers()
+		headers.Set("Authorization", fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", args[0], args[1])))))
 
 		set_headers(headers)
 		store_env()

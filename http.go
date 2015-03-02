@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -24,6 +25,10 @@ func split2(s string, sep string) (a string, b string) {
 
 // Returns HTTP status code
 func do_http(http_method string, args []string) int {
+	// Overridden via -q flag:
+	quiet_mode := false
+	pretty_print := false
+
 	// Determine if body is required based on method:
 	body_required := false
 	switch http_method {
@@ -33,6 +38,48 @@ func do_http(http_method string, args []string) int {
 	}
 
 	// Parse arguments:
+	exclude_headers_arg := ""
+
+	q := args[:]
+	xargs := make([]string, 0, len(args))
+	for len(q) > 0 {
+		arg := q[0]
+		if len(arg) >= 2 && arg[0] == '-' {
+			// Is arg a switch?
+			switch arg[1] {
+			case 'x':
+				// Exclude headers; comma-delimited:
+				q = q[1:]
+				if len(q) == 0 {
+					Error("Expected comma-delimited list of header names following %s flag\n", arg)
+					return -1
+				}
+
+				exclude_headers_arg = q[0]
+				q = q[1:]
+				break
+			case 'q':
+				// Quiet mode:
+				q = q[1:]
+				quiet_mode = true
+				break
+			case 'p':
+				// Pretty-print JSON:
+				q = q[1:]
+				pretty_print = true
+				break
+			default:
+				Error("Unrecognized flag: %s\n", arg)
+				return -1
+			}
+		} else {
+			xargs = append(xargs, arg)
+			q = q[1:]
+		}
+	}
+
+	args = xargs
+	//Error("%s, %d\n", args, len(args))
 
 	// Get environment:
 	base_url := get_base_url()
@@ -59,7 +106,10 @@ func do_http(http_method string, args []string) int {
 	} else /* if !arg_url.IsAbs() */ {
 		// Argument provided a relative URL; require absolute base URL:
 		if base_url == nil {
-			Error("Relative URL passed as argument but missing an absolute base URL from environment. Use `http url <base-url>` command to set one first.\n")
+			Error(`Relative URL passed as argument but missing an absolute base URL from
+environment. Either supply an absolute URL or use the "http url <base-url>"
+command to set an absolute base URL.
+`)
 			return -1
 		}
 
@@ -100,8 +150,6 @@ func do_http(http_method string, args []string) int {
 	}
 
 	// Exclude named headers:
-	// TODO: parse args for this!
-	exclude_headers_arg := ""
 	if exclude_headers_arg != "" {
 		// Remove excluded headers:
 		exclude_headers := strings.Split(exclude_headers_arg, ",")
@@ -125,7 +173,10 @@ func do_http(http_method string, args []string) int {
 		}
 
 		// Default to `application/json` content-type; override with 2nd arg:
-		content_type := "application/json"
+		content_type := req.Header.Get("Content-Type")
+		if content_type == "" {
+			content_type = "application/json"
+		}
 		if len(args) >= 2 {
 			content_type = args[1]
 		}
@@ -139,16 +190,19 @@ func do_http(http_method string, args []string) int {
 		req.Body = ioutil.NopCloser(buf)
 	}
 
-	// for debugging:
-	Error("%s %s\n", http_method, api_url)
-	req.Header.Write(os.Stderr)
-	Error("\n")
-	if body_required {
-		Error("%s\n\n", body_data)
+	if !quiet_mode {
+		Error("%s %s\n", http_method, api_url)
+		req.Header.Write(os.Stderr)
+		Error("\n")
+		if body_required {
+			Error("%s\n\n", body_data)
+		}
 	}
 
 	// Make the request:
-	Error("--------------------------------------------------------------------------------\n")
+	if !quiet_mode {
+		Error("--------------------------------------------------------------------------------\n")
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		Error("HTTP error: %s\n", err)
@@ -156,18 +210,21 @@ func do_http(http_method string, args []string) int {
 	}
 
 	// Dump response headers to stderr:
-	Error("%s\n\n", resp.Status)
-	resp.Header.Write(os.Stderr)
+	if !quiet_mode {
+		Error("%s\n\n", resp.Status)
+		resp.Header.Write(os.Stderr)
+	}
 
 	if resp.Body != nil {
-		Error("\n")
+		if !quiet_mode {
+			Error("\n")
+		}
 
 		// Check response content-type:
 		content_type := resp.Header.Get("Content-Type")
 		content_type, _ = split2(content_type, ";")
-		if content_type == "application/json" {
+		if pretty_print && (content_type == "application/json") {
 			// Pretty-print JSON output:
-			// TODO(jsd): add a flag to disable this.
 
 			// ... or use `json.Indent(dst, src, "", "  ")`
 
@@ -194,6 +251,9 @@ func do_http(http_method string, args []string) int {
 				return -3
 			}
 
+			// Pretty-printing anyway, so output a trailing newline:
+			fmt.Println()
+
 			return resp.StatusCode
 		}
 
@@ -205,9 +265,11 @@ func do_http(http_method string, args []string) int {
 			return resp.StatusCode
 		}
 
-		// For nicer shell output in the event that stderr -> stdout.
-		// We don't want to append any unnecessary \n to stdout.
-		Error("\n")
+		if !quiet_mode {
+			// For nicer shell output in the event that stderr -> stdout.
+			// We don't want to append any unnecessary \n to stdout.
+			Error("\n")
+		}
 	}
 
 	return resp.StatusCode
