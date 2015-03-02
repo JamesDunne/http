@@ -35,7 +35,7 @@ func do_http(http_method string, args []string) {
 
 	// Get environment:
 	base_url := get_base_url()
-	headers := get_headers()
+	headers, _ := get_headers()
 
 	if len(args) == 0 {
 		Error("Missing required URL\n")

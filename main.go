@@ -11,6 +11,35 @@ func Error(format string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, a...)
 }
 
+func print_url_blank() {
+	base_url := get_base_url()
+	if base_url == nil {
+		return
+	}
+	fmt.Printf("%s\n", base_url.String())
+}
+
+func print_url() {
+	base_url := get_base_url()
+	if base_url != nil {
+		tmp := *base_url
+		tmp.RawQuery = ""
+		fmt.Printf("URL:   %s\n", tmp.String())
+		fmt.Printf("Query: %s\n", base_url.RawQuery)
+	} else {
+		fmt.Printf("No base URL\n")
+	}
+}
+
+func print_headers() {
+	headers, n := get_headers()
+	if n == 0 {
+		fmt.Printf("No HTTP headers\n")
+	} else {
+		headers.Write(os.Stdout)
+	}
+}
+
 func main() {
 	args := os.Args[1:][:]
 	_, tool_name := filepath.Split(os.Args[0])
@@ -19,39 +48,33 @@ func main() {
 %s <command or HTTP method> [args...]
 
 Commands:
-  url
-    Gets current base URL from environment.
-  url    <base_url>
-    Sets base URL in environment; must be absolute URL.
+  url <base_url>     - Sets base URL in environment; must be absolute URL. To
+                       clear base URL, use "-" as <base_url>.
+  url                - Displays current base URL from environment.
+  env                - Displays environment: URL, blank line, then HTTP headers
+                       (one per line).
+  session            - Displays environment session ID. Use $HTTPCLI_SESISON_ID
+                       env var to override. Default is "yyyy-MM-dd-########"
+                       with datestamp and parent process pid.
+  reset              - Resets environment; clears out HTTP headers and base URL.
 
-  reset
-    Resets environment; clears out HTTP headers and base URL.
-
-  -- Managing HTTP headers:
-  set    <header_name> <header_value>
-    Sets a custom HTTP header in environment.
-
-  list
-    List current HTTP headers in environment.
-
-  clear
-    Clears all HTTP headers in environment.
+  set <name> <value> - Sets a custom HTTP header in environment.
+  list               - List current HTTP headers in environment.
+  clear              - Clears all HTTP headers in environment.
 
 HTTP:
-  GET     <url>
-  *       <url>
-    Invoke HTTP method against <url>; if <url> is relative, <url> is combined with <base_url>.
-	No body data is sent for these HTTP methods.
+  <method> <url> [content-type]
+    Invoke HTTP method against <url>; if <url> is relative, <url> is combined
+    with <base_url>.
 
-  POST    <url> [content-type]
-  PUT     <url> [content-type]
-  *       <url> <content-type>
-    Invoke HTTP method against <url>; if <url> is relative, <url> is combined with <base_url>
+    If <method> is POST or PUT then a request body is required. [content-type]
+    is required if <method> is not POST or PUT but a request body is needed.
 
-    Request body data is read from stdin (buffered) and submitted with Content-Length.
-	[content-type] default is "application/json" so can be omitted if default is preferred.
-	For anything but POST and PUT, <content-type> is required if the method is non-standard
-	and wants to submit a request body.
+    Request body is read from stdin until EOF, buffered into memory, and
+    submitted with a calculated Content-Length header value. Alternate
+    Transfer-Modes are not supported currently.
+
+    [content-type] default is "application/json"
 `, tool_name)
 		os.Exit(1)
 		return
@@ -68,9 +91,7 @@ HTTP:
 	switch strings.ToLower(cmd) {
 	case "url":
 		if len(args) == 0 {
-			base_url := get_base_url()
-			fmt.Printf("%s", base_url)
-			Error("\n")
+			print_url_blank()
 		} else if len(args) == 1 {
 			set_base_url(args[0])
 			store_env()
@@ -78,25 +99,30 @@ HTTP:
 		break
 
 	case "env":
-		base_url_s := ""
 		base_url := get_base_url()
 		if base_url != nil {
-			base_url_s = base_url.String()
+			fmt.Printf("%s\n\n", base_url.String())
+		} else {
+			fmt.Printf("No base URL\n\n")
 		}
-		fmt.Printf("%s\n\n", base_url_s)
 
 		// Get HTTP headers from environment:
-		get_headers().Write(os.Stdout)
+		print_headers()
+		break
+
+	case "session":
+		// Print current session ID for the environment:
+		fmt.Printf("%s\n", SessionID())
 		break
 
 	case "list":
 		// Get HTTP headers from environment:
-		get_headers().Write(os.Stdout)
+		print_headers()
 		break
 
 	case "set":
 		// Get HTTP headers from environment:
-		headers := get_headers()
+		headers, _ := get_headers()
 		if len(args) == 2 {
 			// Set a new HTTP header:
 			headers.Set(args[0], args[1])

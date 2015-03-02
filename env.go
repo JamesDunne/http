@@ -78,7 +78,8 @@ func setenv(key, value string) (err error) {
 }
 
 // Get HTTP headers from environment:
-func get_headers() (headers http.Header) {
+func get_headers() (headers http.Header, n int) {
+	n = 0
 	headers = make(http.Header)
 	for key, value := range current_environ {
 		if !strings.HasPrefix(key, header_prefix) {
@@ -86,6 +87,7 @@ func get_headers() (headers http.Header) {
 		}
 		name := envkey_to_headerkey(key)
 		headers.Set(name, value)
+		n++
 	}
 	return
 }
@@ -137,7 +139,7 @@ func get_base_url() *url.URL {
 
 func set_base_url(url_s string) {
 	new_value := ""
-	if url_s != "-" {
+	if url_s != "" && url_s != "-" {
 		base_url, err := url.Parse(url_s)
 		if err != nil {
 			Error("Error parsing absolute URL: %s\n", err)
