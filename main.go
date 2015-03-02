@@ -126,11 +126,9 @@ func set_headers(headers http.Header) {
 	}
 }
 
-func get_abs_url() *url.URL {
+func get_base_url() *url.URL {
 	url_s := current_environ["URL"]
 	if url_s == "" {
-		Error("No base URL set\n")
-		os.Exit(2)
 		return nil
 	}
 	base_url, err := url.Parse(url_s)
@@ -147,17 +145,25 @@ func get_abs_url() *url.URL {
 	return base_url
 }
 
-func set_abs_url(base_url *url.URL) {
+func set_base_url(url_s string) {
 	new_value := ""
-	if base_url != nil {
-		if !base_url.IsAbs() {
-			Error("Base URL must be an absolute URL\n")
-			os.Exit(2)
+	if url_s != "-" {
+		base_url, err := url.Parse(url_s)
+		if err != nil {
+			Error("Error parsing absolute URL: %s\n", err)
+			os.Exit(1)
 			return
 		}
-		new_value = base_url.String()
-	}
 
+		if base_url != nil {
+			if !base_url.IsAbs() {
+				Error("Base URL must be an absolute URL\n")
+				os.Exit(2)
+				return
+			}
+			new_value = base_url.String()
+		}
+	}
 	err := setenv("URL", new_value)
 	if err != nil {
 		Error("Error setting base URL: %s\n", err)
@@ -175,48 +181,77 @@ func Split2(s string, sep string) (a string, b string) {
 	return
 }
 
-func do_http(http_method string, body_required bool, args []string) {
+func do_http(http_method string, args []string) {
+	// Determine if body is required based on method:
+	body_required := false
+	switch http_method {
+	case "POST", "PUT":
+		body_required = true
+		break
+	}
+
+	// Parse arguments:
+
 	// Get environment:
-	base_url := get_abs_url()
+	base_url := get_base_url()
 	headers := get_headers()
 
 	if len(args) == 0 {
-		Error("Missing required relative URL\n")
+		Error("Missing required URL\n")
 		os.Exit(1)
 		return
 	}
 
 	// Parse relative URL:
-	rel_url_s := args[0]
-	rel_url, err := url.Parse(rel_url_s)
+	arg_url_s := args[0]
+	arg_url, err := url.Parse(arg_url_s)
 	if err != nil {
-		Error("Error parsing relative URL: %s\n", err)
+		Error("Error parsing URL: %s\n", err)
 		os.Exit(1)
 		return
 	}
 
-	// Prevent base path from being empty:
-	base_path := base_url.Path
-	if base_path == "" {
-		base_path = "/"
-	}
+	// Build a request URL:
+	var api_url *url.URL
+	if arg_url.IsAbs() {
+		// Argument provided an absolute URL; ignore base URL from environment.
+		api_url = arg_url
+	} else /* if !arg_url.IsAbs() */ {
+		// Argument provided a relative URL; require absolute base URL:
+		if base_url == nil {
+			Error("Relative URL passed as argument but missing an absolute base URL from environment. Use `http url <base-url>` command to set one first.\n")
+			os.Exit(1)
+			return
+		}
 
-	// Combine absolute URL base with relative URL argument:
-	api_url := &url.URL{
-		Scheme:   base_url.Scheme,
-		Host:     base_url.Host,
-		User:     base_url.User,
-		Path:     path.Join(base_path, rel_url.Path),
-		RawQuery: base_url.RawQuery,
-		Fragment: rel_url.Fragment,
-	}
+		// Combine base URL as absolute with arg URL as relative.
 
-	// Add rel_url's query to base_url's:
-	q := api_url.Query()
-	for k, v := range rel_url.Query() {
-		q[k] = v
+		// Prevent base path from being empty:
+		base_path := base_url.Path
+		if base_path == "" {
+			base_path = "/"
+		}
+
+		// Treat argument URL as relative
+		rel_url := arg_url
+
+		// Combine absolute URL base with relative URL argument:
+		api_url := &url.URL{
+			Scheme:   base_url.Scheme,
+			Host:     base_url.Host,
+			User:     base_url.User,
+			Path:     path.Join(base_path, rel_url.Path),
+			RawQuery: base_url.RawQuery,
+			Fragment: rel_url.Fragment,
+		}
+
+		// Add rel_url's query to base_url's:
+		q := api_url.Query()
+		for k, v := range rel_url.Query() {
+			q[k] = v
+		}
+		api_url.RawQuery = q.Encode()
 	}
-	api_url.RawQuery = q.Encode()
 
 	// Set up the request:
 	req := &http.Request{
@@ -234,6 +269,10 @@ func do_http(http_method string, body_required bool, args []string) {
 		for _, name := range exclude_headers {
 			delete(req.Header, name)
 		}
+	}
+
+	if len(args) >= 2 {
+		body_required = true
 	}
 
 	// Set up body content-type and data:
@@ -336,8 +375,10 @@ func main() {
 %s <command> [args...]
 
 Commands:
-  url    [absolute_url]
-    Gets or sets base URL in environment.
+  url
+    Gets current base URL from environment.
+  url    <base_url>
+    Sets base URL in environment; must be absolute URL.
 
   reset
     Resets environment; clears out HTTP headers and base URL.
@@ -353,16 +394,21 @@ Commands:
     Clears all HTTP headers in environment.
 
   -- Making HTTP requests:
-  GET    <relative-url>
-  DELETE <relative-url>
-    Invoke HTTP GET or DELETE.
-	<relative-url> is combined with [absolute_url] from environment.
-	No body data is sent.
+  GET     <url>
+  DELETE  <url>
+  *       <url>
+    Invoke HTTP method against <url>; if <url> is relative, <url> is combined with <base_url>.
+	No body data is sent for these HTTP methods.
 
-  POST   <relative_url> [content-type]
-  PUT    <relative_url> [content-type]
-    Invoke HTTP POST or PUT. Body data is read from stdin and buffered.
-	[content-type] default is "application/json".
+  POST    <url> [content-type]
+  PUT     <url> [content-type]
+  *       <url> <content-type>
+    Invoke HTTP method against <url>; if <url> is relative, <url> is combined with <base_url>
+
+    Request body data is read from stdin and buffered and submitted with Content-Length.
+	[content-type] default is "application/json" so can be omitted if default is preferred.
+	For anything but POST and PUT, <content-type> is required if the method is non-standard
+	and wants to submit a request body.
 `, tool_name)
 		os.Exit(1)
 		return
@@ -372,46 +418,37 @@ Commands:
 	cmd := args[0]
 	args = args[1:]
 
+	// Load environment data from file:
 	load_env()
 
-	body_required := true
+	// Process command:
 	switch strings.ToLower(cmd) {
-	case "get", "delete":
-		body_required = false
-		fallthrough
-	case "post", "put":
-		do_http(strings.ToUpper(cmd), body_required, args)
-		break
-
 	case "url":
 		if len(args) == 0 {
-			base_url := get_abs_url()
+			base_url := get_base_url()
 			fmt.Printf("%s", base_url)
 			fmt.Fprintln(os.Stderr)
 		} else if len(args) == 1 {
-			base_url, err := url.Parse(args[0])
-			if err != nil {
-				Error("Error parsing absolute URL: %s\n", err)
-				os.Exit(1)
-				return
-			}
-			set_abs_url(base_url)
+			set_base_url(args[0])
 			store_env()
 		}
 		break
 
-	case "reset":
-		set_headers(nil)
-		set_abs_url(nil)
-		store_env()
+	case "env":
+		base_url_s := ""
+		base_url := get_base_url()
+		if base_url != nil {
+			base_url_s = base_url.String()
+		}
+		fmt.Printf("%s\n\n", base_url_s)
+
+		// Get HTTP headers from environment:
+		get_headers().Write(os.Stdout)
 		break
 
 	case "list":
 		// Get HTTP headers from environment:
-		headers := get_headers()
-		for key, values := range headers {
-			fmt.Printf("%s: %s\n", key, strings.Join(values, " "))
-		}
+		get_headers().Write(os.Stdout)
 		break
 
 	case "set":
@@ -423,7 +460,9 @@ Commands:
 		} else if len(args) == 1 {
 			delete(headers, args[0])
 		} else {
-
+			Error("Missing header name and value\n")
+			os.Exit(1)
+			return
 		}
 
 		set_headers(headers)
@@ -435,8 +474,15 @@ Commands:
 		store_env()
 		break
 
+	case "reset":
+		set_headers(nil)
+		set_base_url("")
+		store_env()
+		break
+
+	// HTTP methods:
 	default:
-		os.Exit(1)
+		do_http(strings.ToUpper(cmd), args)
 		break
 	}
 
