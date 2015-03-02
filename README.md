@@ -23,36 +23,36 @@ Go tools are required for installation. Resulting binary is named `http`.
 ```
 $ http
 Usage:
-http <command> [args...]
+http <command or HTTP method> [args...]
 
 Commands:
-  url    [absolute_url]
-    Gets or sets base URL in environment.
+  url <base_url>     - Sets base URL in environment; must be absolute URL. To
+                       clear base URL, use "-" as <base_url>.
+  url                - Displays current base URL from environment.
+  env                - Displays environment: URL, blank line, then HTTP headers
+                       (one per line).
+  session            - Displays environment session ID. Use $HTTPCLI_SESISON_ID
+                       env var to override. Default is "yyyy-MM-dd-########"
+                       with datestamp and parent process pid.
+  reset              - Resets environment; clears out HTTP headers and base URL.
 
-  reset
-    Resets environment; clears out HTTP headers and base URL.
+  set <name> <value> - Sets a custom HTTP header in environment.
+  list               - List current HTTP headers in environment.
+  clear              - Clears all HTTP headers in environment.
 
-  -- Managing HTTP headers:
-  set    <header_name> <header_value>
-    Sets a custom HTTP header in environment.
+HTTP:
+  <method> <url> [content-type]
+    Invoke HTTP method against <url>; if <url> is relative, <url> is combined
+    with <base_url>.
 
-  list
-    List current HTTP headers in environment.
+    If <method> is POST or PUT then a request body is required. [content-type]
+    is required if <method> is not POST or PUT but a request body is needed.
 
-  clear
-    Clears all HTTP headers in environment.
+    Request body is read from stdin until EOF, buffered into memory, and
+    submitted with a calculated Content-Length header value. Alternate
+    Transfer-Modes are not supported currently.
 
-  -- Making HTTP requests:
-  GET    <relative-url>
-  DELETE <relative-url>
-    Invoke HTTP GET or DELETE.
-        <relative-url> is combined with [absolute_url] from environment.
-        No body data is sent.
-
-  POST   <relative_url> [content-type]
-  PUT    <relative_url> [content-type]
-    Invoke HTTP POST or PUT. Body data is read from stdin and buffered.
-        [content-type] default is "application/json".
+    [content-type] default is "application/json"
 ```
 
 In the above usage statements, `[name]` means an optional argument, and `<name>` means a required argument.
