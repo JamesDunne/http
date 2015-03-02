@@ -273,7 +273,10 @@ func do_http(http_method string, body_required bool, args []string) {
 		return
 	}
 
-	Error("StatusCode: %d\n", resp.StatusCode)
+	// Dump response headers to stderr:
+	Error("%s\n", resp.Status)
+	resp.Header.Write(os.Stderr)
+
 	if resp.Body != nil {
 		_, err = io.Copy(os.Stdout, resp.Body)
 		if err != nil {
