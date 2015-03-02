@@ -5,11 +5,18 @@ A CLI tool for invoking modern HTTP APIs, making use of temp files for sharing H
 
 # Installation
 
+Download the latest released binaries from [GitHub releases](https://github.com/JamesDunne/http/releases)!
+
+Or you can easily build from source.
+
 ```
-$ make
+$ go get github.com/JamesDunne/http
+$ go build
+or
+$ go install
 ```
 
-Go tools are required for installation.
+Go tools are required for installation. Resulting binary is named `http`.
 
 # Usage
 
