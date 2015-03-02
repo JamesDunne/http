@@ -151,8 +151,15 @@ HTTP:
 
 	// HTTP methods:
 	default:
-		do_http(strings.ToUpper(cmd), args)
+		status_code := do_http(strings.ToUpper(cmd), args)
+		if status_code >= 500 {
+			os.Exit(5)
+		} else if status_code >= 400 {
+			os.Exit(4)
+		} else {
+			// 300-, 200-, 100- are not errors.
+			os.Exit(0)
+		}
 		break
 	}
-
 }

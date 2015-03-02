@@ -22,7 +22,8 @@ func split2(s string, sep string) (a string, b string) {
 	return
 }
 
-func do_http(http_method string, args []string) {
+// Returns HTTP status code
+func do_http(http_method string, args []string) int {
 	// Determine if body is required based on method:
 	body_required := false
 	switch http_method {
@@ -39,8 +40,7 @@ func do_http(http_method string, args []string) {
 
 	if len(args) == 0 {
 		Error("Missing required URL\n")
-		os.Exit(1)
-		return
+		return -1
 	}
 
 	// Parse relative URL:
@@ -48,8 +48,7 @@ func do_http(http_method string, args []string) {
 	arg_url, err := url.Parse(arg_url_s)
 	if err != nil {
 		Error("Error parsing URL: %s\n", err)
-		os.Exit(1)
-		return
+		return -1
 	}
 
 	// Build a request URL:
@@ -61,8 +60,7 @@ func do_http(http_method string, args []string) {
 		// Argument provided a relative URL; require absolute base URL:
 		if base_url == nil {
 			Error("Relative URL passed as argument but missing an absolute base URL from environment. Use `http url <base-url>` command to set one first.\n")
-			os.Exit(1)
-			return
+			return -1
 		}
 
 		// Combine base URL as absolute with arg URL as relative.
@@ -123,8 +121,7 @@ func do_http(http_method string, args []string) {
 		body_data, err = ioutil.ReadAll(os.Stdin)
 		if err != nil {
 			Error("Error reading stdin: %s", err)
-			os.Exit(3)
-			return
+			return -2
 		}
 
 		// Default to `application/json` content-type; override with 2nd arg:
@@ -155,8 +152,7 @@ func do_http(http_method string, args []string) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		Error("HTTP error: %s\n", err)
-		os.Exit(3)
-		return
+		return -2
 	}
 
 	// Dump response headers to stderr:
@@ -195,10 +191,10 @@ func do_http(http_method string, args []string) {
 			if err != nil {
 				Error("Error copying response body to stdout: %s\n", err)
 				// We've likely already written to stdout so we can't redirect.
-				return
+				return -3
 			}
 
-			return
+			return resp.StatusCode
 		}
 
 	raw_out:
@@ -206,11 +202,13 @@ func do_http(http_method string, args []string) {
 		_, err = io.Copy(os.Stdout, resp.Body)
 		if err != nil {
 			Error("Error copying response body to stdout: %s\n", err)
-			return
+			return resp.StatusCode
 		}
 
 		// For nicer shell output in the event that stderr -> stdout.
 		// We don't want to append any unnecessary \n to stdout.
 		Error("\n")
 	}
+
+	return resp.StatusCode
 }
