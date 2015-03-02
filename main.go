@@ -22,12 +22,10 @@ var initial_environ, current_environ map[string]string
 
 const header_prefix = "HEADER_"
 
-var env_path = path.Join(TempDir(), ".http-cli.env")
-
 func load_env() {
 	// Load current environment:
 	var env_data []byte
-	env_data, err := ioutil.ReadFile(env_path)
+	env_data, err := ioutil.ReadFile(env_path())
 	if err != nil {
 		env_data = []byte{}
 	}
@@ -45,7 +43,7 @@ func store_env() {
 		env += key + "=" + value + "\n"
 	}
 
-	err := ioutil.WriteFile(env_path, []byte(env), 0600)
+	err := ioutil.WriteFile(env_path(), []byte(env), 0600)
 	if err != nil {
 		panic(err)
 	}
