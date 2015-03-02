@@ -133,9 +133,9 @@ HTTP:
 	case "set":
 		// Get HTTP headers from environment:
 		headers, _ := get_headers()
-		if len(args) == 2 {
+		if len(args) >= 2 {
 			// Set a new HTTP header:
-			headers.Set(args[0], args[1])
+			headers.Set(args[0], strings.Join(args[1:], " "))
 		} else if len(args) == 1 {
 			delete(headers, args[0])
 		} else {

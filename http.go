@@ -18,7 +18,8 @@ func split2(s string, sep string) (a string, b string) {
 	spl := strings.SplitN(s, sep, 2)
 	a = spl[0]
 	if len(spl) > 1 {
-		b = spl[1]
+		// Trim leading spaces:
+		b = strings.TrimLeft(spl[1], " ")
 	}
 	return
 }
@@ -40,7 +41,7 @@ func do_http(http_method string, args []string) int {
 	// Parse arguments:
 	exclude_headers_arg := ""
 
-	q := args[:]
+	q := args
 	xargs := make([]string, 0, len(args))
 	for len(q) > 0 {
 		arg := q[0]
