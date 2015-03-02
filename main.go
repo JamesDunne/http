@@ -70,7 +70,7 @@ HTTP:
 		if len(args) == 0 {
 			base_url := get_base_url()
 			fmt.Printf("%s", base_url)
-			fmt.Fprintln(os.Stderr)
+			Error("\n")
 		} else if len(args) == 1 {
 			set_base_url(args[0])
 			store_env()

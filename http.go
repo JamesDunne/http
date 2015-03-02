@@ -4,7 +4,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -146,6 +145,7 @@ func do_http(http_method string, args []string) {
 	// for debugging:
 	Error("%s %s\n", http_method, api_url)
 	req.Header.Write(os.Stderr)
+	Error("\n")
 	if body_required {
 		Error("%s\n\n", body_data)
 	}
@@ -160,16 +160,18 @@ func do_http(http_method string, args []string) {
 	}
 
 	// Dump response headers to stderr:
-	Error("%s\n", resp.Status)
+	Error("%s\n\n", resp.Status)
 	resp.Header.Write(os.Stderr)
 
 	if resp.Body != nil {
 		Error("\n")
 
+		// Check response content-type:
 		content_type := resp.Header.Get("Content-Type")
 		content_type, _ = split2(content_type, ";")
 		if content_type == "application/json" {
 			// Pretty-print JSON output:
+			// TODO(jsd): add a flag to disable this.
 
 			// ... or use `json.Indent(dst, src, "", "  ")`
 
@@ -178,33 +180,37 @@ func do_http(http_method string, args []string) {
 			dec := json.NewDecoder(resp.Body)
 			err := dec.Decode(&body_json)
 			if err != nil {
-				Error("Error decoding JSON response: %s\n", err)
-				return
+				Error("WARNING: Error decoding JSON response: %s\n", err)
+				goto raw_out
 			}
 
 			// Pretty-print json:
 			out, err := json.MarshalIndent(body_json, "", "  ")
 			if err != nil {
-				Error("Error decoding JSON response: %s\n", err)
-				return
+				Error("WARNING: Error re-encoding JSON response: %s\n", err)
+				goto raw_out
 			}
 
 			_, err = io.Copy(os.Stdout, bytes.NewReader(out))
 			if err != nil {
 				Error("Error copying response body to stdout: %s\n", err)
+				// We've likely already written to stdout so we can't redirect.
 				return
 			}
-		} else {
-			// Copy response body straight to stdout:
-			_, err = io.Copy(os.Stdout, resp.Body)
-			if err != nil {
-				Error("Error copying response body to stdout: %s\n", err)
-				return
-			}
+
+			return
+		}
+
+	raw_out:
+		// Copy response body straight to stdout:
+		_, err = io.Copy(os.Stdout, resp.Body)
+		if err != nil {
+			Error("Error copying response body to stdout: %s\n", err)
+			return
 		}
 
 		// For nicer shell output in the event that stderr -> stdout.
 		// We don't want to append any unnecessary \n to stdout.
-		fmt.Fprintln(os.Stderr)
+		Error("\n")
 	}
 }
