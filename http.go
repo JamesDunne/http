@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -200,14 +201,33 @@ command to set an absolute base URL.
 		}
 	}
 
-	// Make the request:
 	if !quiet_mode {
 		Error("--------------------------------------------------------------------------------\n")
 	}
-	resp, err := http.DefaultClient.Do(req)
+
+	// Define our redirection policy:
+	var redirectPolicyError = errors.New("redirect policy")
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return redirectPolicyError
+		},
+	}
+
+	// Make the request:
+	resp, err := client.Do(req)
 	if err != nil {
+		if uerr, ok := err.(*url.Error); ok {
+			if uerr.Err == redirectPolicyError {
+				// Redirection responses get their bodies removed by `Do()` automatically.
+				// Not sure if this is a bug or not.
+				// Setting Body to nil prevents future "http: read on closed response body" error.
+				resp.Body = nil
+				goto ok
+			}
+		}
 		Error("HTTP error: %s\n", err)
 		return -2
+	ok:
 	}
 
 	// Dump response headers to stderr:
@@ -247,7 +267,7 @@ command to set an absolute base URL.
 
 			_, err = io.Copy(os.Stdout, bytes.NewReader(out))
 			if err != nil {
-				Error("Error copying response body to stdout: %s\n", err)
+				Error("Error copying response JSON to stdout: %s\n", err)
 				// We've likely already written to stdout so we can't redirect.
 				return -3
 			}
