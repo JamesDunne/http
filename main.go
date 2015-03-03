@@ -82,9 +82,10 @@ HTTP:
 
     [options...]:
       -x <header1,header2,header3,...>
-	                 - Exclude headers from request
+                     - Exclude headers from request
       -p             - Pretty-print JSON output
       -q             - Quiet mode; only output response body to stdout
+      -f <N>         - Follow at most N redirects (default 0)
 `, tool_name)
 		os.Exit(1)
 		return

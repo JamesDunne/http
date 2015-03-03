@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -41,8 +42,10 @@ func do_http(http_method string, args []string) int {
 
 	// Parse arguments:
 	exclude_headers_arg := ""
+	redirects_max_follow := 0
 
 	q := args
+	var err error
 	xargs := make([]string, 0, len(args))
 	for len(q) > 0 {
 		arg := q[0]
@@ -58,6 +61,21 @@ func do_http(http_method string, args []string) int {
 				}
 
 				exclude_headers_arg = q[0]
+				q = q[1:]
+				break
+			case 'f':
+				// Follow at most N redirects:
+				q = q[1:]
+				if len(q) == 0 {
+					Error("Expected max number of redirects to follow following %s flag\n", arg)
+					return -1
+				}
+
+				redirects_max_follow, err = strconv.Atoi(q[0])
+				if err != nil {
+					Error("Could not parse max number of redirects argument %s as an integer\n", q[0])
+					return -1
+				}
 				q = q[1:]
 				break
 			case 'q':
@@ -209,7 +227,10 @@ command to set an absolute base URL.
 	var redirectPolicyError = errors.New("redirect policy")
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return redirectPolicyError
+			if len(via) > redirects_max_follow {
+				return redirectPolicyError
+			}
+			return nil
 		},
 	}
 
