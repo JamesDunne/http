@@ -16,6 +16,20 @@ import (
 	"strings"
 )
 
+// Known JSON Content-Types in the wild:
+var json_content_types = map[string]bool{
+	"application/json":         true,
+	"application/x-javascript": true,
+	"text/javascript":          true,
+	"text/x-javascript":        true,
+	"text/x-json":              true,
+}
+
+func isJSONType(content_type string) bool {
+	_, ok := json_content_types[content_type]
+	return ok
+}
+
 func split2(s string, sep string) (a string, b string) {
 	spl := strings.SplitN(s, sep, 2)
 	a = spl[0]
@@ -265,7 +279,7 @@ command to set an absolute base URL.
 		// Check response content-type:
 		content_type := resp.Header.Get("Content-Type")
 		content_type, _ = split2(content_type, ";")
-		if pretty_print && (content_type == "application/json") {
+		if pretty_print && isJSONType(content_type) {
 			// Pretty-print JSON output:
 
 			// ... or use `json.Indent(dst, src, "", "  ")`
